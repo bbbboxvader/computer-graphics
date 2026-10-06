@@ -177,10 +177,13 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+	<ClInclude Include="PracticeCommon.h" />
     <ClInclude Include="PracticeSelect.h" />
     <ClInclude Include="Simple2D.h" />
   </ItemGroup>
   <ItemGroup>
+	<None Include="vertex-basic.glsl"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+	<None Include="fragment-basic.glsl"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
     <None Include="fragement9-1.glsl" />
     <None Include="vertex9-1.glsl" />
   </ItemGroup>

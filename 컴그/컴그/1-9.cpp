@@ -1,271 +1,207 @@
-#include <GL/glew.h>
-#include <GL/glfw3.h>
+#include "PracticeCommon.h"
 
-#include <algorithm>
-#include <cmath>
-#include <iostream>
-#include <vector>
+// 실습 9: 두 삼각형을 네 가지 방법으로 움직인다.
+// 어려운 클래스나 vector 대신, PDF에 나온 구조체와 배열을 사용했다.
 
-#include "PracticeSelect.h"
-#include "Simple2D.h"
-
-#if ACTIVE_PRACTICE == 9
-
-using namespace Simple2D;
+const int TRIANGLE_COUNT = 2;
+const int SPIRAL_POINT_COUNT = 401;
 
 struct Triangle
 {
-	Vec2 position;
+	float x;
+	float y;
 	float size;
-	Color color;
+	float r;
+	float g;
+	float b;
 	float speedX;
 	float speedY;
-	float angle;
-	float angularSpeed;
-	float radius;
-	float radialDirection;
-	float turnDirection;
+	float spiralProgress;
+	float spiralDirection;
+	float spiralSpeed;
 };
 
-Renderer renderer;
-Triangle triangles[2];
-std::vector<Vertex> spiralPath;
-
-bool fillMode = true;
+Triangle triangles[TRIANGLE_COUNT];
 int animationMode = 1;
+bool fillMode = true;
+
+GLuint shaderProgramID = 0;
+GLuint VAO = 0;
+GLuint VBO = 0;
+
+Point2D GetSpiralPoint(float progress)
+{
+	// progress가 0이면 중심, 1이면 나선의 가장 바깥쪽이다.
+	float angle = progress * PI * 8.0f;
+	float radius = progress * 0.72f;
+	Point2D point;
+	point.x = std::cos(angle) * radius;
+	point.y = std::sin(angle) * radius;
+	return point;
+}
 
 void ResetTriangles()
 {
-	triangles[0] = {
-		{ -0.55f, 0.35f }, 0.22f, { 0.18f, 0.55f, 0.92f },
-		0.55f, 0.42f, 0.0f, 1.85f, 0.0f, 1.0f, 1.0f
-	};
-	triangles[1] = {
-		{ 0.50f, -0.35f }, 0.18f, { 1.00f, 0.72f, 0.05f },
-		-0.43f, 0.58f, 0.0f, 1.45f, 0.0f, 1.0f, -1.0f
-	};
-
-	spiralPath.clear();
+	triangles[0] = { -0.50f, -0.15f, 0.20f, 1.0f, 0.75f, 0.05f,
+		0.42f, 0.31f, 0.0f, 1.0f, 0.12f };
+	triangles[1] = { 0.45f, 0.22f, 0.20f, 0.25f, 0.85f, 0.35f,
+		-0.33f, -0.40f, 0.0f, 1.0f, 0.18f };
 }
 
-void PrepareHorizontalMovement()
+void PrepareAnimation(int newMode)
 {
-	triangles[0].speedX = std::abs(triangles[0].speedX);
-	triangles[1].speedX = -std::abs(triangles[1].speedX);
-}
-
-void PrepareDiagonalMovement()
-{
-	// 두 삼각형 모두 왼쪽에서 오른쪽으로만 전진한다.
-	// y 방향만 위·아래 벽에서 뒤집기 때문에 긴 지그재그 파형이 생긴다.
-	for (int i = 0; i < 2; ++i) {
-		Triangle& triangle = triangles[i];
-		triangle.position.x = -1.0f + triangle.size * 0.5f;
-		triangle.position.y = i == 0
-			? 1.0f - triangle.size * 0.5f
-			: -1.0f + triangle.size * 0.5f;
-		triangle.speedX = i == 0 ? 0.42f : 0.34f;
-		triangle.speedY = i == 0 ? -0.95f : 0.82f;
-	}
-}
-
-Vec2 GetSpiralPosition(float progress)
-{
-	// progress가 0이면 반지름도 0이므로 정확히 화면 중심 (0, 0)이다.
-	const float angle = progress * PI * 8.0f;
-	const float radius = progress * 0.72f;
-	return {
-		std::cos(angle) * radius,
-		std::sin(angle) * radius
-	};
-}
-
-void PrepareCenterSpiral()
-{
-	// 4번을 누르는 순간 전체 이동 경로를 미리 계산한다.
-	// 따라서 삼각형이 움직이며 선을 만드는 것이 아니라, 완성된 선 위를 움직인다.
-	spiralPath.clear();
-	constexpr int pointCount = 500;
-	for (int i = 0; i <= pointCount; ++i) {
-		float progress = static_cast<float>(i) / pointCount;
-		spiralPath.push_back(MakeVertex(
-			GetSpiralPosition(progress),
-			{ 0.45f, 0.55f, 0.68f }
-		));
-	}
-
-	for (int i = 0; i < 2; ++i) {
-		Triangle& triangle = triangles[i];
-		triangle.position = { 0.0f, 0.0f };
-		triangle.radius = 0.0f;             // 선 위에서의 진행률(0~1)
-		triangle.radialDirection = 1.0f;    // 1: 바깥쪽, -1: 중심 쪽
-		triangle.angularSpeed = i == 0 ? 0.10f : 0.14f;
-	}
-}
-
-void SetAnimationMode(int newMode)
-{
-	// 이미 실행 중인 번호를 다시 눌렀다면 아무것도 초기화하지 않는다.
-	// 그래서 위치와 진행 방향이 끊기지 않고 그대로 이어진다.
+	// 이미 실행 중인 번호를 또 누르면 아무것도 바꾸지 않는다.
 	if (animationMode == newMode)
 		return;
 
 	animationMode = newMode;
 
-	if (animationMode == 2)
-		PrepareHorizontalMovement();
-	else if (animationMode == 3)
-		PrepareDiagonalMovement();
-	else if (animationMode == 4)
-		PrepareCenterSpiral();
-
-	std::cout << "Animation mode: " << animationMode << std::endl;
+	if (newMode == 2) {
+		triangles[0].x = -0.75f;
+		triangles[0].y = 0.62f;
+		triangles[1].x = 0.75f;
+		triangles[1].y = 0.40f;
+		triangles[0].speedX = 0.55f;
+		triangles[1].speedX = -0.42f;
+	}
+	else if (newMode == 3) {
+		// 두 삼각형 모두 왼쪽에서 오른쪽으로 가면서 위아래로 튕긴다.
+		triangles[0].x = -0.82f;
+		triangles[0].y = -0.55f;
+		triangles[1].x = -0.82f;
+		triangles[1].y = 0.52f;
+		triangles[0].speedX = 0.38f;
+		triangles[0].speedY = 0.92f;
+		triangles[1].speedX = 0.28f;
+		triangles[1].speedY = -0.75f;
+	}
+	else if (newMode == 4) {
+		// 4번은 반드시 두 삼각형 모두 중심 (0, 0)에서 시작한다.
+		for (int i = 0; i < TRIANGLE_COUNT; ++i) {
+			triangles[i].x = 0.0f;
+			triangles[i].y = 0.0f;
+			triangles[i].spiralProgress = 0.0f;
+			triangles[i].spiralDirection = 1.0f;
+		}
+	}
 }
 
 void MoveBounce(Triangle& triangle, float deltaTime)
 {
-	const float half = triangle.size * 0.5f;
-	triangle.position.x += triangle.speedX * deltaTime;
-	triangle.position.y += triangle.speedY * deltaTime;
+	triangle.x += triangle.speedX * deltaTime;
+	triangle.y += triangle.speedY * deltaTime;
+	float limit = 1.0f - triangle.size * 0.55f;
 
-	if (triangle.position.x <= -1.0f + half) {
-		triangle.position.x = -1.0f + half;
-		triangle.speedX = std::abs(triangle.speedX);
+	if (triangle.x > limit || triangle.x < -limit) {
+		triangle.speedX = -triangle.speedX;
+		triangle.x = std::clamp(triangle.x, -limit, limit);
 	}
-	else if (triangle.position.x >= 1.0f - half) {
-		triangle.position.x = 1.0f - half;
-		triangle.speedX = -std::abs(triangle.speedX);
-	}
-
-	if (triangle.position.y <= -1.0f + half) {
-		triangle.position.y = -1.0f + half;
-		triangle.speedY = std::abs(triangle.speedY);
-	}
-	else if (triangle.position.y >= 1.0f - half) {
-		triangle.position.y = 1.0f - half;
-		triangle.speedY = -std::abs(triangle.speedY);
+	if (triangle.y > limit || triangle.y < -limit) {
+		triangle.speedY = -triangle.speedY;
+		triangle.y = std::clamp(triangle.y, -limit, limit);
 	}
 }
 
 void MoveHorizontalZigzag(Triangle& triangle, float deltaTime)
 {
-	const float half = triangle.size * 0.5f;
-	triangle.position.x += triangle.speedX * deltaTime;
+	triangle.x += triangle.speedX * deltaTime;
+	float limit = 1.0f - triangle.size * 0.55f;
 
-	if (triangle.position.x <= -1.0f + half) {
-		triangle.position.x = -1.0f + half;
-		triangle.speedX = std::abs(triangle.speedX);
-		triangle.position.y -= 0.14f;
+	if (triangle.x > limit || triangle.x < -limit) {
+		triangle.speedX = -triangle.speedX;
+		triangle.x = std::clamp(triangle.x, -limit, limit);
+		triangle.y -= 0.20f;
+		if (triangle.y < -0.78f)
+			triangle.y = 0.78f;
 	}
-	else if (triangle.position.x >= 1.0f - half) {
-		triangle.position.x = 1.0f - half;
-		triangle.speedX = -std::abs(triangle.speedX);
-		triangle.position.y -= 0.14f;
-	}
-
-	if (triangle.position.y < -1.0f + half)
-		triangle.position.y = 1.0f - half;
 }
 
-void MoveSharpDiagonalZigzag(Triangle& triangle, float deltaTime)
+void MoveVerticalZigzag(Triangle& triangle, float deltaTime)
 {
-	const float half = triangle.size * 0.5f;
+	// x는 항상 오른쪽으로 간다. y만 위/아래 방향이 바뀐다.
+	triangle.x += std::abs(triangle.speedX) * deltaTime;
+	triangle.y += triangle.speedY * deltaTime;
+	float limit = 1.0f - triangle.size * 0.55f;
 
-	// x와 y를 동시에 바꾸므로 대각선으로 움직인다.
-	triangle.position.x += triangle.speedX * deltaTime;
-	triangle.position.y += triangle.speedY * deltaTime;
-
-	// 위·아래 벽에서 y 방향을 즉시 뒤집어 뾰족한 V 모양을 만든다.
-	if (triangle.position.y <= -1.0f + half) {
-		triangle.position.y = -1.0f + half;
-		triangle.speedY = std::abs(triangle.speedY);
+	if (triangle.y > limit || triangle.y < -limit) {
+		triangle.speedY = -triangle.speedY;
+		triangle.y = std::clamp(triangle.y, -limit, limit);
 	}
-	else if (triangle.position.y >= 1.0f - half) {
-		triangle.position.y = 1.0f - half;
-		triangle.speedY = -std::abs(triangle.speedY);
-	}
-
-	// 오른쪽 끝에 도착하면 왼쪽으로 돌아가 같은 지그재그를 반복한다.
-	// x 속도의 부호는 바꾸지 않으므로 1번처럼 좌우로 튕기지 않는다.
-	if (triangle.position.x >= 1.0f - half)
-		triangle.position.x = -1.0f + half;
+	if (triangle.x > limit)
+		triangle.x = -limit;
 }
 
-void MoveCenterSpiral(Triangle& triangle, int index, float deltaTime)
+void MoveSpiral(Triangle& triangle, float deltaTime)
 {
-	(void)index;
-	triangle.radius +=
-		triangle.radialDirection * triangle.angularSpeed * deltaTime;
+	triangle.spiralProgress +=
+		triangle.spiralDirection * triangle.spiralSpeed * deltaTime;
 
-	if (triangle.radius >= 1.0f) {
-		triangle.radius = 1.0f;
-		triangle.radialDirection = -1.0f;
+	if (triangle.spiralProgress >= 1.0f) {
+		triangle.spiralProgress = 1.0f;
+		triangle.spiralDirection = -1.0f;
 	}
-	else if (triangle.radius <= 0.0f) {
-		triangle.radius = 0.0f;
-		triangle.radialDirection = 1.0f;
+	else if (triangle.spiralProgress <= 0.0f) {
+		triangle.spiralProgress = 0.0f;
+		triangle.spiralDirection = 1.0f;
 	}
 
-	triangle.position = GetSpiralPosition(triangle.radius);
+	Point2D point = GetSpiralPoint(triangle.spiralProgress);
+	triangle.x = point.x;
+	triangle.y = point.y;
 }
 
-void UpdateAnimation(float deltaTime)
+void UpdateScene(float deltaTime)
 {
-	// 창을 오래 끌었다가 돌아왔을 때 한 번에 너무 멀리 뛰지 않게 한다.
-	deltaTime = std::min(deltaTime, 0.05f);
-
-	for (int i = 0; i < 2; ++i) {
+	for (int i = 0; i < TRIANGLE_COUNT; ++i) {
 		if (animationMode == 1)
 			MoveBounce(triangles[i], deltaTime);
 		else if (animationMode == 2)
 			MoveHorizontalZigzag(triangles[i], deltaTime);
 		else if (animationMode == 3)
-			MoveSharpDiagonalZigzag(triangles[i], deltaTime);
-		else if (animationMode == 4)
-			MoveCenterSpiral(triangles[i], i, deltaTime);
+			MoveVerticalZigzag(triangles[i], deltaTime);
+		else
+			MoveSpiral(triangles[i], deltaTime);
 	}
 }
 
-void DrawSpiralPath()
+void DrawSpiralGuide()
 {
-	// 이동 경로는 4번을 누른 즉시 완성된 모양으로 전부 표시한다.
-	if (animationMode != 4)
-		return;
+	Vertex line[SPIRAL_POINT_COUNT];
+	for (int i = 0; i < SPIRAL_POINT_COUNT; ++i) {
+		float progress = static_cast<float>(i) / (SPIRAL_POINT_COUNT - 1);
+		Point2D point = GetSpiralPoint(progress);
+		line[i] = MakeVertex(point.x, point.y, 0.95f, 0.25f, 0.25f);
+	}
+	DrawVertices(VBO, GL_LINE_STRIP, line, SPIRAL_POINT_COUNT);
+}
 
-	renderer.Draw(GL_LINE_STRIP, spiralPath);
+void DrawTriangle(const Triangle& triangle)
+{
+	Vertex vertices[6];
+	if (fillMode) {
+		int count = MakeFilledShape(vertices, TRIANGLE, triangle.x, triangle.y,
+			triangle.size, 0.0f, triangle.r, triangle.g, triangle.b);
+		DrawVertices(VBO, GL_TRIANGLES, vertices, count);
+	}
+	else {
+		int count = MakeShapeOutline(vertices, TRIANGLE, triangle.x, triangle.y,
+			triangle.size, 0.0f, triangle.r, triangle.g, triangle.b);
+		DrawVertices(VBO, GL_LINE_LOOP, vertices, count);
+	}
 }
 
 void DrawScene()
 {
-	renderer.BeginFrame({ 1.0f, 1.0f, 1.0f });
-	DrawSpiralPath();
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glUseProgram(shaderProgramID);
+	glBindVertexArray(VAO);
 
-	for (const Triangle& triangle : triangles) {
-		if (fillMode) {
-			renderer.Draw(
-				GL_TRIANGLES,
-				MakeShape(
-					ShapeKind::Triangle,
-					triangle.position,
-					triangle.size,
-					triangle.color
-				)
-			);
-		}
-		else {
-			renderer.Draw(
-				GL_LINE_LOOP,
-				MakeShapeOutline(
-					ShapeKind::Triangle,
-					triangle.position,
-					triangle.size,
-					triangle.color
-				)
-			);
-		}
-	}
+	if (animationMode == 4)
+		DrawSpiralGuide();
 
-	renderer.EndFrame();
+	for (int i = 0; i < TRIANGLE_COUNT; ++i)
+		DrawTriangle(triangles[i]);
 }
 
 void KeyCallback(GLFWwindow* window, int key, int, int action, int)
@@ -273,47 +209,27 @@ void KeyCallback(GLFWwindow* window, int key, int, int action, int)
 	if (action != GLFW_PRESS)
 		return;
 
-	if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
-		glfwSetWindowShouldClose(window, GLFW_TRUE);
+	if (key >= GLFW_KEY_1 && key <= GLFW_KEY_4)
+		PrepareAnimation(key - GLFW_KEY_0);
 	else if (key == GLFW_KEY_A)
 		fillMode = true;
 	else if (key == GLFW_KEY_B)
 		fillMode = false;
-	else if (key == GLFW_KEY_C || key == GLFW_KEY_R)
+	else if (key == GLFW_KEY_R) {
 		ResetTriangles();
-	else if (key == GLFW_KEY_1)
-		SetAnimationMode(1);
-	else if (key == GLFW_KEY_2)
-		SetAnimationMode(2);
-	else if (key == GLFW_KEY_3)
-		SetAnimationMode(3);
-	else if (key == GLFW_KEY_4)
-		SetAnimationMode(4);
-}
-
-void FramebufferSizeCallback(GLFWwindow*, int width, int height)
-{
-	glViewport(0, 0, width, height);
+		animationMode = 1;
+	}
+	else if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
 
 int main()
 {
-	if (!glfwInit()) {
-		std::cerr << "GLFW initialization failed." << std::endl;
+	if (glfwInit() == GLFW_FALSE)
 		return -1;
-	}
 
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-	GLFWwindow* window = glfwCreateWindow(
-		800, 800,
-		"Practice 9 - 1/2/3/4 animation - Q quit",
-		nullptr, nullptr
-	);
+	GLFWwindow* window = glfwCreateWindow(800, 800, "Practice 9", nullptr, nullptr);
 	if (window == nullptr) {
-		std::cerr << "Window creation failed." << std::endl;
 		glfwTerminate();
 		return -1;
 	}
@@ -321,40 +237,37 @@ int main()
 	glfwMakeContextCurrent(window);
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GLEW_OK) {
-		std::cerr << "GLEW initialization failed." << std::endl;
-		glfwDestroyWindow(window);
 		glfwTerminate();
 		return -1;
 	}
 
-	if (!renderer.Initialize(40000)) {
-		glfwDestroyWindow(window);
-		glfwTerminate();
-		return -1;
-	}
-
-	ResetTriangles();
-	glLineWidth(2.5f);
-	glfwSwapInterval(1);
 	glfwSetKeyCallback(window, KeyCallback);
-	glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
+	shaderProgramID = MakeShaderProgram("vertex-basic.glsl", "fragment-basic.glsl");
+	if (shaderProgramID == 0) {
+		glfwTerminate();
+		return -1;
+	}
+	InitBuffer(VAO, VBO, SPIRAL_POINT_COUNT);
+	ResetTriangles();
 
-	double previousTime = glfwGetTime();
-	while (!glfwWindowShouldClose(window)) {
-		const double currentTime = glfwGetTime();
-		const float deltaTime = static_cast<float>(currentTime - previousTime);
+	float previousTime = static_cast<float>(glfwGetTime());
+	while (glfwWindowShouldClose(window) == GLFW_FALSE) {
+		float currentTime = static_cast<float>(glfwGetTime());
+		float deltaTime = currentTime - previousTime;
 		previousTime = currentTime;
+		if (deltaTime > 0.05f)
+			deltaTime = 0.05f;
 
-		UpdateAnimation(deltaTime);
+		UpdateScene(deltaTime);
 		DrawScene();
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	renderer.Shutdown();
+	glDeleteBuffers(1, &VBO);
+	glDeleteVertexArrays(1, &VAO);
+	glDeleteProgram(shaderProgramID);
 	glfwDestroyWindow(window);
 	glfwTerminate();
 	return 0;
 }
-
-#endif

@@ -1,320 +1,251 @@
-#include "PracticeSelect.h"
+#include "PracticeCommon.h"
+#include <ctime>
 
-#if ACTIVE_PRACTICE == 12
+// 실습 12: 두 세로 통로의 사각형이 같은 구역에 있을 때 Enter를 누른다.
+// 맞으면 둘이 오른쪽 창고로 이동하여 아래부터 차곡차곡 쌓인다.
 
-#include "Simple2D.h"
+const int MAX_STACKED_BLOCKS = 30;
 
-#include <random>
-#include <vector>
-
-using namespace Simple2D;
-
-// 실습 12: 두 세로 공간의 사각형이 중앙 구역에 모이면
-// Enter 키로 오른쪽으로 보내 차례대로 쌓는다.
-
-constexpr float SQUARE_SIZE = 0.12f;
-constexpr float LANE_BOTTOM = -0.82f;
-constexpr float LANE_TOP = 0.82f;
-constexpr float SYNC_BOTTOM = -0.14f;
-constexpr float SYNC_TOP = 0.14f;
-constexpr float STACK_X = 0.73f;
-constexpr float STACK_BOTTOM = -0.84f;
-
-enum class MoveState
+struct MovingBlock
 {
-	VerticalMoving,
-	MovingFirstToStack,
-	MovingSecondToStack
+	float x;
+	float y;
+	float size;
+	float speedY;
+	float r;
+	float g;
+	float b;
+	float targetX;
+	float targetY;
+	bool arrived;
 };
 
-struct MovingSquare
+struct StackedBlock
 {
-	Vec2 position;
-	float direction;
-	float speed;
-	Color color;
-	Vec2 target;
+	float x;
+	float y;
+	float size;
+	float r;
+	float g;
+	float b;
 };
 
-struct StackedSquare
-{
-	Vec2 position;
-	Color color;
-};
+MovingBlock movingBlocks[2];
+StackedBlock stackedBlocks[MAX_STACKED_BLOCKS];
+int stackedCount = 0;
+bool movingToStack = false;
 
-Renderer renderer;
-std::mt19937 randomEngine(std::random_device{}());
-MovingSquare leftSquare{};
-MovingSquare rightSquare{};
-std::vector<StackedSquare> stackedSquares;
-MoveState moveState = MoveState::VerticalMoving;
+GLuint shaderProgramID = 0;
+GLuint VAO = 0;
+GLuint VBO = 0;
 
-Color RandomColor()
+int GetRegion(float y)
 {
-	std::uniform_real_distribution<float> color(0.15f, 0.95f);
-	return { color(randomEngine), color(randomEngine), color(randomEngine) };
+	// 통로를 위, 가운데, 아래의 세 구역으로 나눈다.
+	if (y > 0.28f)
+		return 0;
+	if (y > -0.28f)
+		return 1;
+	return 2;
 }
 
-Vec2 NextStackPosition()
+void MakeNewPair()
 {
-	float gap = 0.012f;
-	float y = STACK_BOTTOM
-		+ SQUARE_SIZE * 0.5f
-		+ static_cast<float>(stackedSquares.size()) * (SQUARE_SIZE + gap);
-	return { STACK_X, y };
+	movingBlocks[0] = { -0.72f, RandomFloat(-0.72f, 0.72f), 0.13f,
+		RandomFloat(0.32f, 0.55f),
+		RandomFloat(0.15f, 0.95f), RandomFloat(0.15f, 0.95f),
+		RandomFloat(0.15f, 0.95f), 0.0f, 0.0f, false };
+	movingBlocks[1] = { -0.34f, RandomFloat(-0.72f, 0.72f), 0.13f,
+		-RandomFloat(0.32f, 0.55f),
+		RandomFloat(0.15f, 0.95f), RandomFloat(0.15f, 0.95f),
+		RandomFloat(0.15f, 0.95f), 0.0f, 0.0f, false };
+	movingToStack = false;
 }
 
-void CreateNewPair()
+void ResetGame()
 {
-	std::uniform_real_distribution<float> startY(-0.70f, 0.70f);
-	std::uniform_real_distribution<float> speed(0.28f, 0.55f);
-	std::uniform_int_distribution<int> direction(0, 1);
-
-	leftSquare = {
-		{ -0.53f, startY(randomEngine) },
-		direction(randomEngine) == 0 ? -1.0f : 1.0f,
-		speed(randomEngine),
-		RandomColor(),
-		{}
-	};
-	rightSquare = {
-		{ 0.08f, startY(randomEngine) },
-		direction(randomEngine) == 0 ? -1.0f : 1.0f,
-		speed(randomEngine),
-		RandomColor(),
-		{}
-	};
-	moveState = MoveState::VerticalMoving;
+	stackedCount = 0;
+	MakeNewPair();
 }
 
-void ResetPractice()
+void StartMovingToStack()
 {
-	stackedSquares.clear();
-	CreateNewPair();
-	std::cout
-		<< "실습 12: 두 사각형이 점선 구역에 함께 있을 때 ENTER, "
-		<< "R=리셋, Q=종료\n";
-}
+	if (movingToStack || GetRegion(movingBlocks[0].y) != GetRegion(movingBlocks[1].y))
+		return;
 
-bool IsInsideSyncArea(const MovingSquare& square)
-{
-	return square.position.y >= SYNC_BOTTOM
-		&& square.position.y <= SYNC_TOP;
-}
-
-void UpdateVerticalSquare(MovingSquare& square, float deltaTime)
-{
-	float half = SQUARE_SIZE * 0.5f;
-	square.position.y += square.direction * square.speed * deltaTime;
-
-	if (square.position.y + half >= LANE_TOP) {
-		square.position.y = LANE_TOP - half;
-		square.direction = -1.0f;
-	}
-	else if (square.position.y - half <= LANE_BOTTOM) {
-		square.position.y = LANE_BOTTOM + half;
-		square.direction = 1.0f;
+	movingToStack = true;
+	for (int i = 0; i < 2; ++i) {
+		int stackIndex = stackedCount + i;
+		int column = stackIndex % 4;
+		int row = stackIndex / 4;
+		movingBlocks[i].targetX = 0.25f + column * 0.17f;
+		movingBlocks[i].targetY = -0.78f + row * 0.15f;
+		movingBlocks[i].arrived = false;
 	}
 }
 
-bool MoveToward(Vec2& position, Vec2 target, float speed, float deltaTime)
+void MoveTowardsTarget(MovingBlock& block, float deltaTime)
 {
-	float dx = target.x - position.x;
-	float dy = target.y - position.y;
+	float dx = block.targetX - block.x;
+	float dy = block.targetY - block.y;
 	float distance = std::sqrt(dx * dx + dy * dy);
-	float amount = speed * deltaTime;
+	float speed = 0.90f;
 
-	if (distance <= amount || distance < 0.001f) {
-		position = target;
-		return true;
-	}
-
-	position.x += dx / distance * amount;
-	position.y += dy / distance * amount;
-	return false;
-}
-
-void Update(float deltaTime)
-{
-	if (moveState == MoveState::VerticalMoving) {
-		UpdateVerticalSquare(leftSquare, deltaTime);
-		UpdateVerticalSquare(rightSquare, deltaTime);
+	// 이번 프레임에 갈 거리보다 목표가 가까우면 지나치지 말고 정확히 붙인다.
+	if (distance <= speed * deltaTime) {
+		block.x = block.targetX;
+		block.y = block.targetY;
+		block.arrived = true;
 		return;
 	}
 
-	if (moveState == MoveState::MovingFirstToStack) {
-		if (MoveToward(leftSquare.position, leftSquare.target, 0.95f, deltaTime)) {
-			stackedSquares.push_back({ leftSquare.position, leftSquare.color });
-			rightSquare.target = NextStackPosition();
-			moveState = MoveState::MovingSecondToStack;
+	block.x += dx / distance * speed * deltaTime;
+	block.y += dy / distance * speed * deltaTime;
+}
+
+void SavePairInStack()
+{
+	for (int i = 0; i < 2 && stackedCount < MAX_STACKED_BLOCKS; ++i) {
+		MovingBlock& source = movingBlocks[i];
+		stackedBlocks[stackedCount] = { source.x, source.y, source.size,
+			source.r, source.g, source.b };
+		++stackedCount;
+	}
+
+	if (stackedCount <= MAX_STACKED_BLOCKS - 2)
+		MakeNewPair();
+}
+
+void UpdateScene(float deltaTime)
+{
+	if (!movingToStack) {
+		for (int i = 0; i < 2; ++i) {
+			MovingBlock& block = movingBlocks[i];
+			block.y += block.speedY * deltaTime;
+			if (block.y > 0.80f || block.y < -0.80f) {
+				block.speedY = -block.speedY;
+				block.y = std::clamp(block.y, -0.80f, 0.80f);
+			}
 		}
 		return;
 	}
 
-	if (MoveToward(rightSquare.position, rightSquare.target, 0.95f, deltaTime)) {
-		stackedSquares.push_back({ rightSquare.position, rightSquare.color });
-
-		// 화면 높이를 넘을 만큼 쌓이면 새 탑을 만들기 위해 자동 리셋한다.
-		if (stackedSquares.size() >= 12) {
-			std::cout << "탑이 가득 차서 새 탑을 시작합니다.\n";
-			stackedSquares.clear();
-		}
-		CreateNewPair();
-	}
+	MoveTowardsTarget(movingBlocks[0], deltaTime);
+	MoveTowardsTarget(movingBlocks[1], deltaTime);
+	if (movingBlocks[0].arrived && movingBlocks[1].arrived)
+		SavePairInStack();
 }
 
-void DrawDashedHorizontalLine(float y, Color color)
+void DrawRectangleOutline(float left, float right, float bottom, float top,
+	float r, float g, float b)
 {
-	std::vector<Vertex> dashes;
-	float start = -0.82f;
-	float end = 0.31f;
-	float dash = 0.055f;
-	float gap = 0.035f;
-	for (float x = start; x < end; x += dash + gap) {
-		float dashEnd = std::min(x + dash, end);
-		dashes.push_back(MakeVertex({ x, y }, color));
-		dashes.push_back(MakeVertex({ dashEnd, y }, color));
-	}
-	renderer.Draw(GL_LINES, dashes);
+	Vertex rectangle[4] = {
+		MakeVertex(left,  bottom, r, g, b),
+		MakeVertex(right, bottom, r, g, b),
+		MakeVertex(right, top,    r, g, b),
+		MakeVertex(left,  top,    r, g, b)
+	};
+	DrawVertices(VBO, GL_LINE_LOOP, rectangle, 4);
 }
 
-void DrawSquare(Vec2 center, Color color)
+void DrawSquare(float x, float y, float size, float r, float g, float b)
 {
-	renderer.Draw(
-		GL_TRIANGLES,
-		MakeFilledRectangle(center, SQUARE_SIZE, SQUARE_SIZE, color)
-	);
-	renderer.Draw(
-		GL_LINE_LOOP,
-		MakeRectangleOutline(
-			center, SQUARE_SIZE, SQUARE_SIZE,
-			{ 0.12f, 0.36f, 0.62f }
-		)
-	);
+	Vertex vertices[6];
+	int count = MakeFilledShape(vertices, SQUARE, x, y, size, 0.0f, r, g, b);
+	DrawVertices(VBO, GL_TRIANGLES, vertices, count);
 }
 
 void DrawScene()
 {
-	renderer.BeginFrame({ 0.97f, 0.97f, 0.95f });
-	glLineWidth(2.0f);
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glUseProgram(shaderProgramID);
+	glBindVertexArray(VAO);
 
-	Color laneColor{ 0.25f, 0.50f, 0.75f };
-	renderer.Draw(
-		GL_LINE_LOOP,
-		MakeRectangleOutline(
-			{ -0.53f, 0.0f }, 0.30f,
-			LANE_TOP - LANE_BOTTOM, laneColor
-		)
-	);
-	renderer.Draw(
-		GL_LINE_LOOP,
-		MakeRectangleOutline(
-			{ 0.08f, 0.0f }, 0.30f,
-			LANE_TOP - LANE_BOTTOM, laneColor
-		)
-	);
+	// 두 세로 통로
+	DrawRectangleOutline(-0.86f, -0.58f, -0.90f, 0.90f, 0.15f, 0.45f, 0.75f);
+	DrawRectangleOutline(-0.48f, -0.20f, -0.90f, 0.90f, 0.15f, 0.45f, 0.75f);
 
-	// 두 사각형이 동시에 들어와야 하는 중앙 공간
-	DrawDashedHorizontalLine(SYNC_TOP, { 0.25f, 0.50f, 0.75f });
-	DrawDashedHorizontalLine(SYNC_BOTTOM, { 0.25f, 0.50f, 0.75f });
+	// 세 구역이 어디인지 알아보기 위한 가로 안내선
+	Vertex guides[8] = {
+		MakeVertex(-0.86f,  0.28f, 0.70f, 0.78f, 0.86f),
+		MakeVertex(-0.58f,  0.28f, 0.70f, 0.78f, 0.86f),
+		MakeVertex(-0.48f,  0.28f, 0.70f, 0.78f, 0.86f),
+		MakeVertex(-0.20f,  0.28f, 0.70f, 0.78f, 0.86f),
+		MakeVertex(-0.86f, -0.28f, 0.70f, 0.78f, 0.86f),
+		MakeVertex(-0.58f, -0.28f, 0.70f, 0.78f, 0.86f),
+		MakeVertex(-0.48f, -0.28f, 0.70f, 0.78f, 0.86f),
+		MakeVertex(-0.20f, -0.28f, 0.70f, 0.78f, 0.86f)
+	};
+	DrawVertices(VBO, GL_LINES, guides, 8);
 
-	// 오른쪽 적재 위치를 알려 주는 세로 기준선
-	renderer.Draw(
-		GL_LINES,
-		MakeLine({ STACK_X, -0.90f }, { STACK_X, 0.90f }, { 0.78f, 0.82f, 0.84f })
-	);
-
-	for (const StackedSquare& square : stackedSquares)
-		DrawSquare(square.position, square.color);
-
-	// 쌓는 도중에는 먼저 도착한 사각형이 stackedSquares에 들어가므로
-	// 아직 이동 중인 사각형만 따로 그린다.
-	if (moveState != MoveState::MovingSecondToStack)
-		DrawSquare(leftSquare.position, leftSquare.color);
-	DrawSquare(rightSquare.position, rightSquare.color);
-
-	renderer.EndFrame();
-}
-
-void StartStacking()
-{
-	if (moveState != MoveState::VerticalMoving)
-		return;
-
-	if (!IsInsideSyncArea(leftSquare) || !IsInsideSyncArea(rightSquare)) {
-		std::cout << "두 사각형이 모두 점선 구역 안에 있을 때 ENTER를 누르세요.\n";
-		return;
+	for (int i = 0; i < stackedCount; ++i) {
+		StackedBlock& block = stackedBlocks[i];
+		DrawSquare(block.x, block.y, block.size, block.r, block.g, block.b);
 	}
-
-	// 왼쪽 사각형을 먼저 보내고, 도착하면 오른쪽 사각형을 보낸다.
-	leftSquare.target = NextStackPosition();
-	moveState = MoveState::MovingFirstToStack;
+	for (int i = 0; i < 2; ++i) {
+		MovingBlock& block = movingBlocks[i];
+		DrawSquare(block.x, block.y, block.size, block.r, block.g, block.b);
+	}
 }
 
-void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void KeyCallback(GLFWwindow* window, int key, int, int action, int)
 {
 	if (action != GLFW_PRESS)
 		return;
-	if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER)
-		StartStacking();
-	if (key == GLFW_KEY_R)
-		ResetPractice();
-	if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
-		glfwSetWindowShouldClose(window, true);
-}
-
-void FramebufferSizeCallback(GLFWwindow* window, int width, int height)
-{
-	glViewport(0, 0, width, height);
+	if (key == GLFW_KEY_ENTER)
+		StartMovingToStack();
+	else if (key == GLFW_KEY_R)
+		ResetGame();
+	else if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
 
 int main()
 {
-	if (!glfwInit())
+	std::srand(static_cast<unsigned int>(std::time(nullptr)));
+	if (glfwInit() == GLFW_FALSE)
 		return -1;
 
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-	GLFWwindow* window = glfwCreateWindow(
-		1000, 720,
-		"Practice 12 - ENTER stack / R reset / Q quit",
-		nullptr, nullptr
-	);
-	if (!window) {
+	GLFWwindow* window = glfwCreateWindow(800, 800, "Practice 12", nullptr, nullptr);
+	if (window == nullptr) {
 		glfwTerminate();
 		return -1;
 	}
-
 	glfwMakeContextCurrent(window);
 	glewExperimental = GL_TRUE;
-	if (glewInit() != GLEW_OK || !renderer.Initialize()) {
-		glfwDestroyWindow(window);
+	if (glewInit() != GLEW_OK) {
 		glfwTerminate();
 		return -1;
 	}
 
 	glfwSetKeyCallback(window, KeyCallback);
-	glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-	ResetPractice();
+	shaderProgramID = MakeShaderProgram("vertex-basic.glsl", "fragment-basic.glsl");
+	if (shaderProgramID == 0) {
+		glfwTerminate();
+		return -1;
+	}
+	InitBuffer(VAO, VBO, 100);
+	ResetGame();
 
-	double previousTime = glfwGetTime();
-	while (!glfwWindowShouldClose(window)) {
-		double currentTime = glfwGetTime();
-		float deltaTime = static_cast<float>(currentTime - previousTime);
+	float previousTime = static_cast<float>(glfwGetTime());
+	while (glfwWindowShouldClose(window) == GLFW_FALSE) {
+		float currentTime = static_cast<float>(glfwGetTime());
+		float deltaTime = currentTime - previousTime;
 		previousTime = currentTime;
+		if (deltaTime > 0.05f)
+			deltaTime = 0.05f;
 
-		Update(deltaTime);
+		UpdateScene(deltaTime);
 		DrawScene();
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	renderer.Shutdown();
+	glDeleteBuffers(1, &VBO);
+	glDeleteVertexArrays(1, &VAO);
+	glDeleteProgram(shaderProgramID);
 	glfwDestroyWindow(window);
 	glfwTerminate();
 	return 0;
 }
-
-#endif

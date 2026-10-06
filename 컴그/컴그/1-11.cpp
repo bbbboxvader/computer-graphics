@@ -1,292 +1,269 @@
-#include "PracticeSelect.h"
+#include "PracticeCommon.h"
+#include <ctime>
 
-#if ACTIVE_PRACTICE == 11
+// 실습 11: 20 x 20 보드 위에서 주인공이 뱀처럼 한 칸씩 이동한다.
 
-#include "Simple2D.h"
+const int BOARD_SIZE = 20;
+const int OBSTACLE_COUNT = 65;
+const float BOARD_LEFT = -0.90f;
+const float BOARD_TOP = 0.90f;
+const float CELL_SIZE = 1.80f / BOARD_SIZE;
 
-#include <array>
-#include <random>
-
-using namespace Simple2D;
-
-// 실습 11: 20 x 20 보드에서 주인공을 좌우 지그재그로 이동시키기
-
-constexpr int BOARD_SIZE = 20;
-constexpr int CELL_COUNT = BOARD_SIZE * BOARD_SIZE;
-constexpr float BOARD_LEFT = -0.92f;
-constexpr float BOARD_RIGHT = 0.92f;
-constexpr float BOARD_BOTTOM = -0.92f;
-constexpr float BOARD_TOP = 0.92f;
-constexpr float CELL_SIZE = (BOARD_RIGHT - BOARD_LEFT) / BOARD_SIZE;
-
-struct CellShape
+struct BoardObject
 {
-	bool active;
-	ShapeKind kind;
-	Color color;
+	int row;
+	int column;
+	ShapeType kind;
 	float size;
+	float r;
+	float g;
+	float b;
+	bool active;
 };
 
-Renderer renderer;
-std::array<CellShape, CELL_COUNT> obstacles{};
-std::mt19937 randomEngine(std::random_device{}());
-
-int pathIndex = 0;
-ShapeKind heroKind = ShapeKind::Square;
-Color heroColor{ 0.15f, 0.45f, 0.95f };
-float heroSize = CELL_SIZE * 0.68f;
-
+BoardObject hero;
+BoardObject obstacles[OBSTACLE_COUNT];
 bool automaticMove = false;
-bool reachedLastCell = false;
-float automaticTimer = 0.0f;
-float stepInterval = 0.09f;
-
+bool finished = false;
+float moveTimer = 0.0f;
 float collisionTimer = 0.0f;
-int collisionCell = -1;
 
-int CellIndexFromPath(int index)
+GLuint shaderProgramID = 0;
+GLuint VAO = 0;
+GLuint VBO = 0;
+
+Point2D CellCenter(int row, int column)
 {
-	int row = index / BOARD_SIZE;
-	int positionInRow = index % BOARD_SIZE;
-	int column = row % 2 == 0
-		? positionInRow
-		: BOARD_SIZE - 1 - positionInRow;
-	return row * BOARD_SIZE + column;
+	Point2D center;
+	center.x = BOARD_LEFT + (column + 0.5f) * CELL_SIZE;
+	center.y = BOARD_TOP - (row + 0.5f) * CELL_SIZE;
+	return center;
 }
 
-Vec2 CellCenter(int cellIndex)
+bool CellAlreadyUsed(int row, int column, int usedCount)
 {
-	int row = cellIndex / BOARD_SIZE;
-	int column = cellIndex % BOARD_SIZE;
-	return {
-		BOARD_LEFT + (column + 0.5f) * CELL_SIZE,
-		BOARD_TOP - (row + 0.5f) * CELL_SIZE
-	};
-}
-
-Color RandomColor()
-{
-	std::uniform_real_distribution<float> color(0.12f, 0.95f);
-	return { color(randomEngine), color(randomEngine), color(randomEngine) };
-}
-
-void ResetPractice()
-{
-	for (CellShape& obstacle : obstacles)
-		obstacle.active = false;
-
-	pathIndex = 0;
-	heroKind = ShapeKind::Square;
-	heroColor = { 0.15f, 0.45f, 0.95f };
-	heroSize = CELL_SIZE * 0.68f;
-	automaticMove = false;
-	reachedLastCell = false;
-	automaticTimer = 0.0f;
-	collisionTimer = 0.0f;
-	collisionCell = -1;
-
-	std::uniform_int_distribution<int> randomCell(1, CELL_COUNT - 2);
-	std::uniform_int_distribution<int> randomKind(0, 2);
-	std::uniform_real_distribution<float> randomSize(0.45f, 0.78f);
-
-	// 장애물은 겹치지 않게 충분한 개수(70개)를 배치한다.
-	int made = 0;
-	while (made < 70) {
-		int cell = randomCell(randomEngine);
-		if (obstacles[cell].active)
-			continue;
-
-		int kindNumber = randomKind(randomEngine);
-		ShapeKind kind = ShapeKind::Triangle;
-		if (kindNumber == 1)
-			kind = ShapeKind::Square;
-		else if (kindNumber == 2)
-			kind = ShapeKind::InvertedTriangle;
-
-		obstacles[cell] = {
-			true,
-			kind,
-			RandomColor(),
-			CELL_SIZE * randomSize(randomEngine)
-		};
-		++made;
+	for (int i = 0; i < usedCount; ++i) {
+		if (obstacles[i].row == row && obstacles[i].column == column)
+			return true;
 	}
+	return false;
+}
 
-	std::cout
-		<< "실습 11: SPACE/오른쪽 화살표=한 칸, A=자동 이동, "
-		<< "R=리셋, Q=종료\n";
+void ResetGame()
+{
+	hero = { 0, 0, SQUARE, CELL_SIZE * 0.72f,
+		0.10f, 0.35f, 0.95f, true };
+	finished = false;
+	automaticMove = false;
+	moveTimer = 0.0f;
+	collisionTimer = 0.0f;
+
+	for (int i = 0; i < OBSTACLE_COUNT; ++i) {
+		int row;
+		int column;
+		do {
+			row = std::rand() % BOARD_SIZE;
+			column = std::rand() % BOARD_SIZE;
+		} while ((row == 0 && column == 0) || CellAlreadyUsed(row, column, i));
+
+		ShapeType kind = static_cast<ShapeType>(std::rand() % 3);
+		obstacles[i] = { row, column, kind,
+			RandomFloat(CELL_SIZE * 0.48f, CELL_SIZE * 0.78f),
+			RandomFloat(0.15f, 0.95f), RandomFloat(0.15f, 0.95f),
+			RandomFloat(0.15f, 0.95f), true };
+	}
+}
+
+void SwapHeroAndObstacle(BoardObject& obstacle)
+{
+	ShapeType oldKind = hero.kind;
+	float oldSize = hero.size;
+	float oldR = hero.r;
+	float oldG = hero.g;
+	float oldB = hero.b;
+
+	hero.kind = obstacle.kind;
+	hero.size = obstacle.size;
+	hero.r = obstacle.r;
+	hero.g = obstacle.g;
+	hero.b = obstacle.b;
+
+	obstacle.kind = oldKind;
+	obstacle.size = oldSize;
+	obstacle.r = oldR;
+	obstacle.g = oldG;
+	obstacle.b = oldB;
+	collisionTimer = 0.28f;
+}
+
+void CheckCollision()
+{
+	for (int i = 0; i < OBSTACLE_COUNT; ++i) {
+		if (obstacles[i].active && obstacles[i].row == hero.row &&
+			obstacles[i].column == hero.column) {
+			SwapHeroAndObstacle(obstacles[i]);
+			return;
+		}
+	}
 }
 
 void MoveOneCell()
 {
-	if (reachedLastCell)
+	if (finished)
 		return;
 
-	++pathIndex;
-	if (pathIndex >= CELL_COUNT - 1) {
-		pathIndex = CELL_COUNT - 1;
-		reachedLastCell = true;
-		automaticMove = false;
-		std::cout << "마지막 칸에 도착했습니다!\n";
+	// 짝수 줄은 오른쪽, 홀수 줄은 왼쪽으로 가는 뱀 모양 이동이다.
+	if (hero.row % 2 == 0) {
+		if (hero.column < BOARD_SIZE - 1)
+			++hero.column;
+		else if (hero.row < BOARD_SIZE - 1)
+			++hero.row;
+	}
+	else {
+		if (hero.column > 0)
+			--hero.column;
+		else if (hero.row < BOARD_SIZE - 1)
+			++hero.row;
 	}
 
-	int cell = CellIndexFromPath(pathIndex);
-	CellShape& obstacle = obstacles[cell];
-	if (!obstacle.active)
-		return;
-
-	// 충돌하면 주인공과 장애물의 모양, 색상, 크기를 서로 교환한다.
-	std::swap(heroKind, obstacle.kind);
-	std::swap(heroColor, obstacle.color);
-	std::swap(heroSize, obstacle.size);
-
-	collisionTimer = 0.45f;
-	collisionCell = cell;
+	CheckCollision();
+	if (hero.row == BOARD_SIZE - 1 && hero.column == 0) {
+		finished = true;
+		automaticMove = false;
+	}
 }
 
-void Update(float deltaTime)
+void UpdateScene(float deltaTime)
 {
 	if (collisionTimer > 0.0f)
 		collisionTimer -= deltaTime;
 
-	if (!automaticMove || reachedLastCell)
+	if (!automaticMove || finished)
 		return;
 
-	automaticTimer += deltaTime;
-	while (automaticTimer >= stepInterval && !reachedLastCell) {
-		automaticTimer -= stepInterval;
+	moveTimer += deltaTime;
+	if (moveTimer >= 0.12f) {
+		moveTimer = 0.0f;
 		MoveOneCell();
 	}
 }
 
-void DrawBoardLines()
+void DrawGrid()
 {
-	std::vector<Vertex> lines;
-	Color gridColor{ 0.64f, 0.72f, 0.79f };
-	lines.reserve((BOARD_SIZE + 1) * 4);
-
+	Vertex lines[(BOARD_SIZE + 1) * 4];
+	int count = 0;
 	for (int i = 0; i <= BOARD_SIZE; ++i) {
 		float x = BOARD_LEFT + i * CELL_SIZE;
-		lines.push_back(MakeVertex({ x, BOARD_BOTTOM }, gridColor));
-		lines.push_back(MakeVertex({ x, BOARD_TOP }, gridColor));
+		lines[count++] = MakeVertex(x, -0.90f, 0.75f, 0.82f, 0.90f);
+		lines[count++] = MakeVertex(x,  0.90f, 0.75f, 0.82f, 0.90f);
 
-		float y = BOARD_BOTTOM + i * CELL_SIZE;
-		lines.push_back(MakeVertex({ BOARD_LEFT, y }, gridColor));
-		lines.push_back(MakeVertex({ BOARD_RIGHT, y }, gridColor));
+		float y = BOARD_TOP - i * CELL_SIZE;
+		lines[count++] = MakeVertex(-0.90f, y, 0.75f, 0.82f, 0.90f);
+		lines[count++] = MakeVertex( 0.90f, y, 0.75f, 0.82f, 0.90f);
 	}
-	renderer.Draw(GL_LINES, lines);
+	DrawVertices(VBO, GL_LINES, lines, count);
+}
+
+void DrawBoardObject(const BoardObject& object)
+{
+	if (!object.active)
+		return;
+	Point2D center = CellCenter(object.row, object.column);
+	Vertex vertices[6];
+	int count = MakeFilledShape(vertices, object.kind, center.x, center.y,
+		object.size, 0.0f, object.r, object.g, object.b);
+	DrawVertices(VBO, GL_TRIANGLES, vertices, count);
+}
+
+void DrawCollisionEffect()
+{
+	if (collisionTimer <= 0.0f)
+		return;
+	Point2D center = CellCenter(hero.row, hero.column);
+	Vertex outline[6];
+	int count = MakeShapeOutline(outline, SQUARE, center.x, center.y,
+		CELL_SIZE * 0.92f, 0.0f, 1.0f, 0.35f, 0.05f);
+	glLineWidth(4.0f);
+	DrawVertices(VBO, GL_LINE_LOOP, outline, count);
+	glLineWidth(1.0f);
 }
 
 void DrawScene()
 {
-	renderer.BeginFrame({ 0.97f, 0.97f, 0.95f });
-	glLineWidth(1.0f);
-	DrawBoardLines();
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glUseProgram(shaderProgramID);
+	glBindVertexArray(VAO);
 
-	for (int cell = 0; cell < CELL_COUNT; ++cell) {
-		const CellShape& obstacle = obstacles[cell];
-		if (!obstacle.active)
-			continue;
-
-		Vec2 center = CellCenter(cell);
-		renderer.Draw(
-			GL_TRIANGLES,
-			MakeShape(obstacle.kind, center, obstacle.size, obstacle.color)
-		);
-	}
-
-	int heroCell = CellIndexFromPath(pathIndex);
-	Vec2 heroCenter = CellCenter(heroCell);
-	renderer.Draw(
-		GL_TRIANGLES,
-		MakeShape(heroKind, heroCenter, heroSize, heroColor)
-	);
-
-	// 충돌 후 잠깐 보이는 두 겹의 주황색 테두리 효과
-	if (collisionTimer > 0.0f && collisionCell >= 0) {
-		float ratio = collisionTimer / 0.45f;
-		float size1 = CELL_SIZE * (0.9f + (1.0f - ratio) * 0.55f);
-		Vec2 center = CellCenter(collisionCell);
-		glLineWidth(3.0f);
-		renderer.Draw(
-			GL_LINE_LOOP,
-			MakeRectangleOutline(center, size1, size1, { 1.0f, 0.25f, 0.05f })
-		);
-		glLineWidth(1.0f);
-	}
-
-	renderer.EndFrame();
+	DrawGrid();
+	for (int i = 0; i < OBSTACLE_COUNT; ++i)
+		DrawBoardObject(obstacles[i]);
+	DrawBoardObject(hero);
+	DrawCollisionEffect();
 }
 
-void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void KeyCallback(GLFWwindow* window, int key, int, int action, int)
 {
 	if (action != GLFW_PRESS)
 		return;
 
 	if (key == GLFW_KEY_SPACE || key == GLFW_KEY_RIGHT)
 		MoveOneCell();
-	if (key == GLFW_KEY_A) {
+	else if (key == GLFW_KEY_A) {
 		automaticMove = !automaticMove;
-		std::cout << "자동 이동: " << (automaticMove ? "켜짐" : "꺼짐") << '\n';
+		moveTimer = 0.0f;
 	}
-	if (key == GLFW_KEY_R)
-		ResetPractice();
-	if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
-		glfwSetWindowShouldClose(window, true);
-}
-
-void FramebufferSizeCallback(GLFWwindow* window, int width, int height)
-{
-	glViewport(0, 0, width, height);
+	else if (key == GLFW_KEY_R)
+		ResetGame();
+	else if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
 
 int main()
 {
-	if (!glfwInit())
+	std::srand(static_cast<unsigned int>(std::time(nullptr)));
+	if (glfwInit() == GLFW_FALSE)
 		return -1;
 
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-	GLFWwindow* window = glfwCreateWindow(
-		850, 850,
-		"Practice 11 - SPACE step / A auto / R reset / Q quit",
-		nullptr, nullptr
-	);
-	if (!window) {
+	GLFWwindow* window = glfwCreateWindow(800, 800, "Practice 11", nullptr, nullptr);
+	if (window == nullptr) {
 		glfwTerminate();
 		return -1;
 	}
-
 	glfwMakeContextCurrent(window);
 	glewExperimental = GL_TRUE;
-	if (glewInit() != GLEW_OK || !renderer.Initialize()) {
-		glfwDestroyWindow(window);
+	if (glewInit() != GLEW_OK) {
 		glfwTerminate();
 		return -1;
 	}
 
 	glfwSetKeyCallback(window, KeyCallback);
-	glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-	ResetPractice();
+	shaderProgramID = MakeShaderProgram("vertex-basic.glsl", "fragment-basic.glsl");
+	if (shaderProgramID == 0) {
+		glfwTerminate();
+		return -1;
+	}
+	InitBuffer(VAO, VBO, 100);
+	ResetGame();
 
-	double previousTime = glfwGetTime();
-	while (!glfwWindowShouldClose(window)) {
-		double currentTime = glfwGetTime();
-		float deltaTime = static_cast<float>(currentTime - previousTime);
+	float previousTime = static_cast<float>(glfwGetTime());
+	while (glfwWindowShouldClose(window) == GLFW_FALSE) {
+		float currentTime = static_cast<float>(glfwGetTime());
+		float deltaTime = currentTime - previousTime;
 		previousTime = currentTime;
+		if (deltaTime > 0.05f)
+			deltaTime = 0.05f;
 
-		Update(deltaTime);
+		UpdateScene(deltaTime);
 		DrawScene();
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	renderer.Shutdown();
+	glDeleteBuffers(1, &VBO);
+	glDeleteVertexArrays(1, &VAO);
+	glDeleteProgram(shaderProgramID);
 	glfwDestroyWindow(window);
 	glfwTerminate();
 	return 0;
 }
-
-#endif

@@ -1,411 +1,280 @@
-#include "PracticeSelect.h"
+#include "PracticeCommon.h"
+#include <ctime>
 
-#if ACTIVE_PRACTICE == 10
+// 실습 10: 왼쪽의 조각을 마우스로 끌어 오른쪽의 같은 모양에 맞춘다.
 
-#include "Simple2D.h"
-
-#include <algorithm>
-#include <array>
-#include <random>
-#include <string>
-#include <vector>
-
-using namespace Simple2D;
-
-// 실습 10: 왼쪽의 작은 도형을 오른쪽 모양판에 드래그해서 맞추기
+const int MAX_SLOTS = 20;
+const int MAX_PIECES = 24;
 
 struct Slot
 {
-	ShapeKind kind;
-	Vec2 center;
+	ShapeType kind;
+	float x;
+	float y;
 	float size;
 	float angle;
-	int boardIndex;
 	bool filled;
 };
 
 struct Piece
 {
-	ShapeKind kind;
-	Vec2 position;
+	ShapeType kind;
+	float x;
+	float y;
+	float startX;
+	float startY;
 	float size;
 	float angle;
-	Color color;
+	float r;
+	float g;
+	float b;
 	int targetSlot;
 	bool placed;
 };
 
-struct Board
-{
-	Vec2 center;
-	float width;
-	float height;
-	std::vector<int> slots;
-	bool complete;
-};
-
-Renderer renderer;
-std::vector<Slot> slots;
-std::vector<Piece> pieces;
-std::vector<Board> boards;
-
-std::mt19937 randomEngine(std::random_device{}());
-std::uniform_real_distribution<float> randomX(-0.91f, -0.12f);
-std::uniform_real_distribution<float> randomY(-0.88f, 0.88f);
-std::uniform_real_distribution<float> randomColor(0.15f, 0.95f);
-
+Slot slots[MAX_SLOTS];
+Piece pieces[MAX_PIECES];
+int slotCount = 0;
+int pieceCount = 0;
 int draggedPiece = -1;
-Vec2 dragDifference{ 0.0f, 0.0f };
-Vec2 dragStartPosition{ 0.0f, 0.0f };
+float dragDifferenceX = 0.0f;
+float dragDifferenceY = 0.0f;
 
-Color RandomColor()
+GLuint shaderProgramID = 0;
+GLuint VAO = 0;
+GLuint VBO = 0;
+
+void AddSlot(ShapeType kind, float x, float y, float size, float angle)
 {
-	return {
-		randomColor(randomEngine),
-		randomColor(randomEngine),
-		randomColor(randomEngine)
-	};
+	if (slotCount >= MAX_SLOTS)
+		return;
+
+	slots[slotCount] = { kind, x, y, size, angle, false };
+	++slotCount;
 }
 
-Vec2 FindFreeLeftPosition(float size)
+void MakeTargetShapes()
 {
-	float margin = size * 0.65f;
-	std::uniform_real_distribution<float> x(-0.94f + margin, -0.06f - margin);
-	std::uniform_real_distribution<float> y(-0.94f + margin, 0.94f - margin);
+	slotCount = 0;
 
-	Vec2 candidate{};
-	for (int attempt = 0; attempt < 150; ++attempt) {
-		candidate = { x(randomEngine), y(randomEngine) };
-		bool overlaps = false;
-		for (const Piece& piece : pieces) {
-			float wantedDistance = (size + piece.size) * 0.58f;
-			if (Distance(candidate, piece.position) < wantedDistance) {
-				overlaps = true;
-				break;
-			}
-		}
-		if (!overlaps)
-			return candidate;
+	// 모양판 1: 작은 사각형 네 개
+	AddSlot(SQUARE, 0.22f, 0.72f, 0.10f, 0.0f);
+	AddSlot(SQUARE, 0.36f, 0.72f, 0.10f, 0.0f);
+	AddSlot(SQUARE, 0.22f, 0.58f, 0.10f, 0.0f);
+	AddSlot(SQUARE, 0.36f, 0.58f, 0.10f, 0.0f);
+
+	// 모양판 2: 서로 떨어진 직각삼각형 네 개
+	AddSlot(RIGHT_TRIANGLE, 0.62f, 0.72f, 0.13f, 0.0f);
+	AddSlot(RIGHT_TRIANGLE, 0.80f, 0.72f, 0.13f, PI * 0.5f);
+	AddSlot(RIGHT_TRIANGLE, 0.62f, 0.54f, 0.13f, -PI * 0.5f);
+	AddSlot(RIGHT_TRIANGLE, 0.80f, 0.54f, 0.13f, PI);
+
+	// 모양판 3: 나란히 놓인 직각삼각형 두 개
+	AddSlot(RIGHT_TRIANGLE, 0.22f, 0.15f, 0.18f, 0.0f);
+	AddSlot(RIGHT_TRIANGLE, 0.43f, 0.15f, 0.18f, PI);
+
+	// 모양판 4: 집 모양(사각형 위에 삼각형)
+	AddSlot(SQUARE, 0.73f, 0.08f, 0.18f, 0.0f);
+	AddSlot(TRIANGLE, 0.73f, 0.27f, 0.18f, 0.0f);
+
+	// 모양판 5: 산처럼 나란한 삼각형 세 개
+	AddSlot(TRIANGLE, 0.30f, -0.52f, 0.17f, 0.0f);
+	AddSlot(TRIANGLE, 0.52f, -0.52f, 0.17f, 0.0f);
+	AddSlot(TRIANGLE, 0.74f, -0.52f, 0.17f, 0.0f);
+}
+
+void SwapPieces(int first, int second)
+{
+	Piece temporary = pieces[first];
+	pieces[first] = pieces[second];
+	pieces[second] = temporary;
+}
+
+void ResetGame()
+{
+	MakeTargetShapes();
+	pieceCount = slotCount + 2 + std::rand() % 3;
+
+	for (int i = 0; i < slotCount; ++i) {
+		float red = RandomFloat(0.15f, 0.95f);
+		float green = RandomFloat(0.15f, 0.95f);
+		float blue = RandomFloat(0.15f, 0.95f);
+		pieces[i] = { slots[i].kind, 0.0f, 0.0f, 0.0f, 0.0f,
+			slots[i].size, slots[i].angle, red, green, blue, i, false };
 	}
 
-	// 조각이 많아 빈 곳을 찾지 못하면 마지막 후보를 사용한다.
-	return candidate;
-}
-
-int AddBoard(Vec2 center, float width, float height)
-{
-	boards.push_back({ center, width, height, {}, false });
-	return static_cast<int>(boards.size()) - 1;
-}
-
-Vec2 CenterRightTriangleAtCorner(Vec2 corner, float size, float angle)
-{
-	// RightTriangle의 직각 꼭짓점은 회전 전 (-size/2, -size/2)이다.
-	// 네 삼각형의 직각 꼭짓점을 같은 점에 맞추면 겹치지 않는 바람개비가 된다.
-	Vec2 localCorner = Rotate({ -size * 0.5f, -size * 0.5f }, angle);
-	return {
-		corner.x - localCorner.x,
-		corner.y - localCorner.y
-	};
-}
-
-void AddSlot(
-	int boardIndex,
-	ShapeKind kind,
-	Vec2 center,
-	float size,
-	float angle = 0.0f)
-{
-	int slotIndex = static_cast<int>(slots.size());
-	slots.push_back({ kind, center, size, angle, boardIndex, false });
-	boards[boardIndex].slots.push_back(slotIndex);
-
-	// 모양판에 꼭 필요한 조각을 왼쪽 임의 위치에 하나 만든다.
-	pieces.push_back({
-		kind,
-		FindFreeLeftPosition(size),
-		size,
-		angle,
-		RandomColor(),
-		-1,
-		false
-	});
-}
-
-void CheckBoardComplete(int boardIndex)
-{
-	Board& board = boards[boardIndex];
-	board.complete = true;
-	for (int slotIndex : board.slots) {
-		if (!slots[slotIndex].filled) {
-			board.complete = false;
-			break;
-		}
+	// 목표에 없는 방해용 조각도 2~4개 넣는다.
+	for (int i = slotCount; i < pieceCount; ++i) {
+		ShapeType randomKind = static_cast<ShapeType>(std::rand() % 4);
+		pieces[i] = { randomKind, 0.0f, 0.0f, 0.0f, 0.0f, 0.11f, 0.0f,
+			RandomFloat(0.15f, 0.95f), RandomFloat(0.15f, 0.95f),
+			RandomFloat(0.15f, 0.95f), -1, false };
 	}
 
-	if (board.complete)
-		std::cout << "모양판 " << boardIndex + 1 << " 완성!\n";
-}
+	// 배열 순서를 섞으면 매번 조각의 종류가 다른 위치에 나타난다.
+	for (int i = pieceCount - 1; i > 0; --i)
+		SwapPieces(i, std::rand() % (i + 1));
 
-void ResetPractice()
-{
-	slots.clear();
-	pieces.clear();
-	boards.clear();
+	// 5열 격자에 하나씩 놓으므로 시작할 때 서로 겹치지 않는다.
+	for (int i = 0; i < pieceCount; ++i) {
+		int column = i % 5;
+		int row = i / 5;
+		pieces[i].x = -0.90f + column * 0.18f;
+		pieces[i].y = 0.76f - row * 0.43f;
+		pieces[i].startX = pieces[i].x;
+		pieces[i].startY = pieces[i].y;
+	}
+
 	draggedPiece = -1;
-
-	// 1번 모양판: 작은 사각형 4개
-	int board = AddBoard({ 0.27f, 0.70f }, 0.26f, 0.26f);
-	AddSlot(board, ShapeKind::Square, { 0.22f, 0.75f }, 0.075f);
-	AddSlot(board, ShapeKind::Square, { 0.32f, 0.75f }, 0.075f);
-	AddSlot(board, ShapeKind::Square, { 0.22f, 0.65f }, 0.075f);
-	AddSlot(board, ShapeKind::Square, { 0.32f, 0.65f }, 0.075f);
-
-	// 2번 모양판: 직각삼각형 4개가 중심점에서 만나되 서로 겹치지 않는다.
-	board = AddBoard({ 0.72f, 0.70f }, 0.26f, 0.26f);
-	const Vec2 pinwheelCenter{ 0.72f, 0.70f };
-	const float pinwheelSize = 0.12f;
-	for (int i = 0; i < 4; ++i) {
-		float angle = PI * 0.5f * i;
-		AddSlot(
-			board,
-			ShapeKind::RightTriangle,
-			CenterRightTriangleAtCorner(pinwheelCenter, pinwheelSize, angle),
-			pinwheelSize,
-			angle
-		);
-	}
-
-	// 3번 모양판: 직각삼각형 2개로 사각형 만들기
-	board = AddBoard({ 0.27f, 0.18f }, 0.26f, 0.26f);
-	AddSlot(board, ShapeKind::RightTriangle, { 0.27f, 0.18f }, 0.20f, 0.0f);
-	AddSlot(board, ShapeKind::RightTriangle, { 0.27f, 0.18f }, 0.20f, PI);
-
-	// 4번 모양판: 사각형과 정삼각형으로 집 만들기
-	board = AddBoard({ 0.72f, 0.18f }, 0.26f, 0.30f);
-	AddSlot(board, ShapeKind::Square, { 0.72f, 0.10f }, 0.14f);
-	AddSlot(board, ShapeKind::Triangle, { 0.72f, 0.30f }, 0.17f);
-
-	// 5번 모양판: 정삼각형 3개로 산 모양 만들기(학생이 추가한 모양판)
-	board = AddBoard({ 0.50f, -0.55f }, 0.40f, 0.32f);
-	AddSlot(board, ShapeKind::Triangle, { 0.38f, -0.60f }, 0.14f);
-	AddSlot(board, ShapeKind::Triangle, { 0.62f, -0.60f }, 0.14f);
-	AddSlot(board, ShapeKind::Triangle, { 0.50f, -0.40f }, 0.14f);
-
-	// 문제의 "랜덤한 개수"를 보이기 위한 여분 조각 2~5개.
-	std::uniform_int_distribution<int> extraCount(2, 5);
-	std::uniform_int_distribution<int> extraKind(0, 2);
-	int count = extraCount(randomEngine);
-	for (int i = 0; i < count; ++i) {
-		ShapeKind kind = ShapeKind::Square;
-		int kindNumber = extraKind(randomEngine);
-		if (kindNumber == 1)
-			kind = ShapeKind::Triangle;
-		else if (kindNumber == 2)
-			kind = ShapeKind::RightTriangle;
-
-		pieces.push_back({
-			kind,
-			FindFreeLeftPosition(0.07f),
-			0.07f,
-			0.0f,
-			RandomColor(),
-			-1,
-			false
-		});
-	}
-
-	std::shuffle(pieces.begin(), pieces.end(), randomEngine);
-	std::cout << "실습 10 리셋: 조각을 드래그해서 같은 모양판에 놓으세요.\n";
 }
 
 void DrawPiece(const Piece& piece)
 {
-	renderer.Draw(
-		GL_TRIANGLES,
-		MakeShape(piece.kind, piece.position, piece.size, piece.color, piece.angle)
-	);
-	renderer.Draw(
-		GL_LINE_LOOP,
-		MakeShapeOutline(
-			piece.kind, piece.position, piece.size,
-			{ 0.10f, 0.30f, 0.55f }, piece.angle
-		)
-	);
+	Vertex vertices[6];
+	int count = MakeFilledShape(vertices, piece.kind, piece.x, piece.y,
+		piece.size, piece.angle, piece.r, piece.g, piece.b);
+	DrawVertices(VBO, GL_TRIANGLES, vertices, count);
+}
+
+void DrawSlot(const Slot& slot)
+{
+	Vertex vertices[6];
+	int count = MakeShapeOutline(vertices, slot.kind, slot.x, slot.y,
+		slot.size, slot.angle, 0.15f, 0.45f, 0.75f);
+	DrawVertices(VBO, GL_LINE_LOOP, vertices, count);
 }
 
 void DrawScene()
 {
-	renderer.BeginFrame({ 0.97f, 0.97f, 0.95f });
-	glLineWidth(2.0f);
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glUseProgram(shaderProgramID);
+	glBindVertexArray(VAO);
 
-	// 왼쪽 조각 영역과 오른쪽 모양판 영역을 나누는 선
-	renderer.Draw(GL_LINES, MakeLine({ 0.0f, -0.95f }, { 0.0f, 0.95f }, { 0.35f, 0.55f, 0.75f }));
+	// 왼쪽 조각 구역과 오른쪽 모양판 구역을 나누는 선이다.
+	Vertex divider[2] = {
+		MakeVertex(0.0f, -0.95f, 0.65f, 0.75f, 0.85f),
+		MakeVertex(0.0f,  0.95f, 0.65f, 0.75f, 0.85f)
+	};
+	DrawVertices(VBO, GL_LINES, divider, 2);
 
-	// 바깥쪽 사각형 모양판 테두리는 그리지 않는다.
-	// 필요한 도형 자리의 윤곽선만 보이므로 각 모양이 서로 분리되어 보인다.
-	for (const Slot& slot : slots) {
-		if (!slot.filled) {
-			renderer.Draw(
-				GL_LINE_LOOP,
-				MakeShapeOutline(
-					slot.kind, slot.center, slot.size,
-					{ 0.45f, 0.62f, 0.78f }, slot.angle
-				)
-			);
-		}
-	}
-
-	for (const Piece& piece : pieces)
-		DrawPiece(piece);
-
-	renderer.EndFrame();
+	for (int i = 0; i < slotCount; ++i)
+		DrawSlot(slots[i]);
+	for (int i = 0; i < pieceCount; ++i)
+		DrawPiece(pieces[i]);
 }
 
-void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+int FindPiece(float mouseX, float mouseY)
+{
+	// 뒤에 그린 조각부터 검사하면 눈에 보이는 맨 위 조각이 선택된다.
+	for (int i = pieceCount - 1; i >= 0; --i) {
+		if (!pieces[i].placed && PointInsideShape(mouseX, mouseY,
+			pieces[i].x, pieces[i].y, pieces[i].size))
+			return i;
+	}
+	return -1;
+}
+
+void MouseButtonCallback(GLFWwindow* window, int button, int action, int)
 {
 	if (button != GLFW_MOUSE_BUTTON_LEFT)
 		return;
 
-	double mouseX = 0.0;
-	double mouseY = 0.0;
-	glfwGetCursorPos(window, &mouseX, &mouseY);
-	Vec2 mouse = MouseToOpenGL(window, mouseX, mouseY);
+	double mousePixelX;
+	double mousePixelY;
+	glfwGetCursorPos(window, &mousePixelX, &mousePixelY);
+	Point2D mouse = MouseToOpenGL(window, mousePixelX, mousePixelY);
 
 	if (action == GLFW_PRESS) {
-		// 뒤에 그린 조각부터 검사해야 겹쳤을 때 위쪽 조각이 선택된다.
-		for (int i = static_cast<int>(pieces.size()) - 1; i >= 0; --i) {
-			Piece& piece = pieces[i];
-			// 한 번 정확한 자리에 들어간 조각은 즉시 잠근다.
-			if (piece.placed)
-				continue;
-
-			if (PointInShape(piece.kind, mouse, piece.position, piece.size)) {
-				draggedPiece = i;
-				dragDifference = {
-					piece.position.x - mouse.x,
-					piece.position.y - mouse.y
-				};
-				dragStartPosition = piece.position;
-				break;
-			}
+		draggedPiece = FindPiece(mouse.x, mouse.y);
+		if (draggedPiece != -1) {
+			dragDifferenceX = pieces[draggedPiece].x - mouse.x;
+			dragDifferenceY = pieces[draggedPiece].y - mouse.y;
 		}
 	}
-	else if (action == GLFW_RELEASE && draggedPiece >= 0) {
+	else if (action == GLFW_RELEASE && draggedPiece != -1) {
 		Piece& piece = pieces[draggedPiece];
+		bool correct = false;
 
-		// 숨겨진 정답 번호가 아니라 눈에 보이는 종류·크기·방향으로 맞춘다.
-		int bestSlot = -1;
-		float bestDistance = 1000.0f;
-		for (int i = 0; i < static_cast<int>(slots.size()); ++i) {
-			const Slot& slot = slots[i];
-			if (slot.filled || slot.kind != piece.kind)
-				continue;
-			if (std::abs(slot.size - piece.size) > 0.001f)
-				continue;
-			if (std::abs(slot.angle - piece.angle) > 0.001f)
-				continue;
-
-			float distance = Distance(piece.position, slot.center);
-			float snapDistance = std::max(0.10f, slot.size * 0.80f);
-			if (distance <= snapDistance && distance < bestDistance) {
-				bestSlot = i;
-				bestDistance = distance;
+		if (piece.targetSlot >= 0) {
+			Slot& target = slots[piece.targetSlot];
+			if (!target.filled && Distance(piece.x, piece.y, target.x, target.y) < 0.10f) {
+				piece.x = target.x;
+				piece.y = target.y;
+				piece.angle = target.angle;
+				piece.placed = true;
+				target.filled = true;
+				correct = true;
 			}
 		}
 
-		if (bestSlot >= 0) {
-			Slot& slot = slots[bestSlot];
-			piece.position = slot.center;
-			piece.targetSlot = bestSlot;
-			piece.placed = true;
-			slot.filled = true;
-			CheckBoardComplete(slot.boardIndex);
-		}
-		else {
-			// 틀린 곳에 놓으면 원래 있던 왼쪽 자리로 돌아간다.
-			piece.position = dragStartPosition;
+		if (!correct) {
+			piece.x = piece.startX;
+			piece.y = piece.startY;
 		}
 		draggedPiece = -1;
 	}
 }
 
-void CursorPositionCallback(GLFWwindow* window, double mouseX, double mouseY)
+void CursorPositionCallback(GLFWwindow* window, double mousePixelX, double mousePixelY)
 {
-	if (draggedPiece < 0)
+	if (draggedPiece == -1)
 		return;
 
-	Vec2 mouse = MouseToOpenGL(window, mouseX, mouseY);
-	pieces[draggedPiece].position = {
-		mouse.x + dragDifference.x,
-		mouse.y + dragDifference.y
-	};
+	Point2D mouse = MouseToOpenGL(window, mousePixelX, mousePixelY);
+	pieces[draggedPiece].x = mouse.x + dragDifferenceX;
+	pieces[draggedPiece].y = mouse.y + dragDifferenceY;
 }
 
-void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void KeyCallback(GLFWwindow* window, int key, int, int action, int)
 {
 	if (action != GLFW_PRESS)
 		return;
 	if (key == GLFW_KEY_R)
-		ResetPractice();
-	if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
-		glfwSetWindowShouldClose(window, true);
-}
-
-void FramebufferSizeCallback(GLFWwindow* window, int width, int height)
-{
-	glViewport(0, 0, width, height);
+		ResetGame();
+	else if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
 
 int main()
 {
-	if (!glfwInit())
+	std::srand(static_cast<unsigned int>(std::time(nullptr)));
+	if (glfwInit() == GLFW_FALSE)
 		return -1;
 
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-	GLFWwindow* window = glfwCreateWindow(
-		1000, 760,
-		"Practice 10 - Drag pieces / R reset / Q quit",
-		nullptr, nullptr
-	);
-	if (!window) {
+	GLFWwindow* window = glfwCreateWindow(800, 800, "Practice 10", nullptr, nullptr);
+	if (window == nullptr) {
 		glfwTerminate();
 		return -1;
 	}
-
 	glfwMakeContextCurrent(window);
 	glewExperimental = GL_TRUE;
 	if (glewInit() != GLEW_OK) {
-		glfwDestroyWindow(window);
 		glfwTerminate();
 		return -1;
 	}
 
-	if (!renderer.Initialize()) {
-		glfwDestroyWindow(window);
-		glfwTerminate();
-		return -1;
-	}
-
+	glfwSetKeyCallback(window, KeyCallback);
 	glfwSetMouseButtonCallback(window, MouseButtonCallback);
 	glfwSetCursorPosCallback(window, CursorPositionCallback);
-	glfwSetKeyCallback(window, KeyCallback);
-	glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
+	shaderProgramID = MakeShaderProgram("vertex-basic.glsl", "fragment-basic.glsl");
+	if (shaderProgramID == 0) {
+		glfwTerminate();
+		return -1;
+	}
+	InitBuffer(VAO, VBO, 100);
+	ResetGame();
 
-	ResetPractice();
-	while (!glfwWindowShouldClose(window)) {
+	while (glfwWindowShouldClose(window) == GLFW_FALSE) {
 		DrawScene();
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	renderer.Shutdown();
+	glDeleteBuffers(1, &VBO);
+	glDeleteVertexArrays(1, &VAO);
+	glDeleteProgram(shaderProgramID);
 	glfwDestroyWindow(window);
 	glfwTerminate();
 	return 0;
 }
-
-#endif

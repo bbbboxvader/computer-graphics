@@ -20,6 +20,7 @@
     <Link><SubSystem>Console</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation><AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
   </ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="1-12.cpp" /></ItemGroup>
-  <ItemGroup><ClInclude Include="PracticeSelect.h" /><ClInclude Include="Simple2D.h" /></ItemGroup>
+  <ItemGroup><ClInclude Include="PracticeCommon.h" /></ItemGroup>
+  <ItemGroup><None Include="vertex-basic.glsl"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None><None Include="fragment-basic.glsl"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" /><ImportGroup Label="ExtensionTargets" />
 </Project>
