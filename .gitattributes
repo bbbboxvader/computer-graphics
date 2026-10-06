@@ -1,0 +1,16 @@
+* text=auto
+
+*.cpp text eol=crlf
+*.h text eol=crlf
+*.glsl text eol=crlf
+*.sln text eol=crlf
+*.slnx text eol=crlf
+*.vcxproj text eol=crlf
+*.filters text eol=crlf
+*.props text eol=crlf
+
+*.lib binary
+*.dll binary
+
+# Vendored upstream headers keep their original formatting.
+third_party/include/** -whitespace

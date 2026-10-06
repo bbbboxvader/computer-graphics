@@ -4,4 +4,7 @@
     <Platform Name="x86" />
   </Configurations>
   <Project Path="컴그\컴그.vcxproj" Id="1df7388e-54bf-44cb-8865-01c17bc0cc22" />
+  <Project Path="컴그\Practice10.vcxproj" Id="a5109c56-6d9d-4b07-a3d4-015a3ea91010" />
+  <Project Path="컴그\Practice11.vcxproj" Id="b621ad67-7eae-4c18-b4e5-126b4fb02111" />
+  <Project Path="컴그\Practice12.vcxproj" Id="c732be78-8fbf-4d29-c5f6-237c50c13212" />
 </Solution>

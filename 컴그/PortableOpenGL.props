@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    저장소 안의 GLEW/GLFW를 사용한다.
+    노트북의 Windows SDK 폴더에 헤더나 라이브러리를 직접 복사할 필요가 없다.
+  -->
+  <PropertyGroup>
+    <PortableOpenGLRoot>$(MSBuildThisFileDirectory)..\third_party\</PortableOpenGLRoot>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup Condition="'$(Platform)'=='x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(PortableOpenGLRoot)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(PortableOpenGLRoot)lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemGroup Condition="'$(Platform)'=='x64'">
+    <PortableOpenGLRuntime Include="$(PortableOpenGLRoot)bin\x64\glew32.dll" />
+  </ItemGroup>
+
+  <Target Name="CopyPortableOpenGLRuntime" AfterTargets="Build" Condition="'$(Platform)'=='x64'">
+    <Copy
+      SourceFiles="@(PortableOpenGLRuntime)"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>
