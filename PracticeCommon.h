@@ -11,7 +11,7 @@
 #include <sstream>
 #include <string>
 
-// 네 실습에서 공통으로 사용하는 아주 기본적인 자료형과 함수들이다.
+// 실습 9~15에서 공통으로 사용하는 아주 기본적인 자료형과 함수들이다.
 // PDF에 나온 배열, 구조체, VAO, VBO, glDrawArrays 방식만 사용한다.
 
 const float PI = 3.1415926535f;

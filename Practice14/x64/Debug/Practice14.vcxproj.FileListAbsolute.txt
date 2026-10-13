@@ -1,0 +1,2 @@
+C:\Users\tedu0\source\repos\컴그\x64\Debug\Practice14\vertex-3d.glsl
+C:\Users\tedu0\source\repos\컴그\x64\Debug\Practice14\fragment-basic.glsl

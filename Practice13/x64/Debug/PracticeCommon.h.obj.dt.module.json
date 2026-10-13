@@ -1,0 +1,14 @@
+{
+    "version": 1,
+    "revision": 0,
+    "rules": [
+        {
+            "primary-output": "Practice13\\x64\\Debug\\PracticeCommon.obj",
+            "outputs": [
+                "Practice13\\x64\\Debug\\PracticeCommon.h.obj.dt.module.json",
+                "Practice13\\x64\\Debug\\PracticeCommon.h.obj.dt.d.json"
+            ],
+            "requires": []
+        }
+    ]
+}
