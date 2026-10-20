@@ -1,0 +1,3 @@
+C:\Users\tedu0\source\repos\컴그\x64\Debug\vertex-17.glsl
+C:\Users\tedu0\source\repos\컴그\x64\Debug\fragment-17.glsl
+C:\Users\tedu0\source\repos\컴그\Project17\x64\Debug\Project17.exe
