@@ -1,0 +1,48 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Practice18", "practice18\Practice18.vcxproj", "{CAFBE2CC-AA8E-562D-9E9F-345CF051996D}"
+EndProject
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Practice19", "practice19\Practice19.vcxproj", "{6965683B-12F0-5B5C-9405-10BFEDA3EAEA}"
+EndProject
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Practice20", "practice20\Practice20.vcxproj", "{475E59FE-4296-538F-AF98-26CEB09A0247}"
+EndProject
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Practice21", "practice21\Practice21.vcxproj", "{403BD18A-0869-57E9-A651-162E2C86D84B}"
+EndProject
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Practice22", "practice22\Practice22.vcxproj", "{FC421B4D-EA14-5AE9-9AD3-BDCEFABDFA1C}"
+EndProject
+Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "Practice23", "practice23\Practice23.vcxproj", "{B971E6CB-A0A9-5F78-BE9F-C6A70AF816C1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CAFBE2CC-AA8E-562D-9E9F-345CF051996D}.Debug|x64.ActiveCfg = Debug|x64
+		{CAFBE2CC-AA8E-562D-9E9F-345CF051996D}.Debug|x64.Build.0 = Debug|x64
+		{CAFBE2CC-AA8E-562D-9E9F-345CF051996D}.Release|x64.ActiveCfg = Release|x64
+		{CAFBE2CC-AA8E-562D-9E9F-345CF051996D}.Release|x64.Build.0 = Release|x64
+		{6965683B-12F0-5B5C-9405-10BFEDA3EAEA}.Debug|x64.ActiveCfg = Debug|x64
+		{6965683B-12F0-5B5C-9405-10BFEDA3EAEA}.Debug|x64.Build.0 = Debug|x64
+		{6965683B-12F0-5B5C-9405-10BFEDA3EAEA}.Release|x64.ActiveCfg = Release|x64
+		{6965683B-12F0-5B5C-9405-10BFEDA3EAEA}.Release|x64.Build.0 = Release|x64
+		{475E59FE-4296-538F-AF98-26CEB09A0247}.Debug|x64.ActiveCfg = Debug|x64
+		{475E59FE-4296-538F-AF98-26CEB09A0247}.Debug|x64.Build.0 = Debug|x64
+		{475E59FE-4296-538F-AF98-26CEB09A0247}.Release|x64.ActiveCfg = Release|x64
+		{475E59FE-4296-538F-AF98-26CEB09A0247}.Release|x64.Build.0 = Release|x64
+		{403BD18A-0869-57E9-A651-162E2C86D84B}.Debug|x64.ActiveCfg = Debug|x64
+		{403BD18A-0869-57E9-A651-162E2C86D84B}.Debug|x64.Build.0 = Debug|x64
+		{403BD18A-0869-57E9-A651-162E2C86D84B}.Release|x64.ActiveCfg = Release|x64
+		{403BD18A-0869-57E9-A651-162E2C86D84B}.Release|x64.Build.0 = Release|x64
+		{FC421B4D-EA14-5AE9-9AD3-BDCEFABDFA1C}.Debug|x64.ActiveCfg = Debug|x64
+		{FC421B4D-EA14-5AE9-9AD3-BDCEFABDFA1C}.Debug|x64.Build.0 = Debug|x64
+		{FC421B4D-EA14-5AE9-9AD3-BDCEFABDFA1C}.Release|x64.ActiveCfg = Release|x64
+		{FC421B4D-EA14-5AE9-9AD3-BDCEFABDFA1C}.Release|x64.Build.0 = Release|x64
+		{B971E6CB-A0A9-5F78-BE9F-C6A70AF816C1}.Debug|x64.ActiveCfg = Debug|x64
+		{B971E6CB-A0A9-5F78-BE9F-C6A70AF816C1}.Debug|x64.Build.0 = Debug|x64
+		{B971E6CB-A0A9-5F78-BE9F-C6A70AF816C1}.Release|x64.ActiveCfg = Release|x64
+		{B971E6CB-A0A9-5F78-BE9F-C6A70AF816C1}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+EndGlobal

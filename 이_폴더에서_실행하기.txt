@@ -1,0 +1,9 @@
+﻿상위 폴더의 컴그.slnx를 열면 "실습 18~23 (좌표계 변환)" 그룹에 새 프로젝트 6개가 있습니다.
+Debug / x64를 선택한 뒤 원하는 Practice18~Practice23을 시작 프로젝트로 설정하고 Ctrl+F5로 실행하세요.
+기존 Project18은 그대로 보존했습니다.
+이 폴더의 Coordinates18_23.sln은 새 실습 6개만 여는 독립 솔루션입니다.
+Run_Practice18.cmd~Run_Practice23.cmd를 더블 클릭해도 실행됩니다.
+한국어 주석과 상세 조작키는 소스 코드 및 README.md를 참고하세요.
+
+각 실습의 소스는 main.cpp / vertex.glsl / fragmet.glsl 3개입니다.
+실행 파일은 bin/x64/Debug/Practice번호/ 안에 있으며 같은 폴더에 해당 셰이더가 복사됩니다.
