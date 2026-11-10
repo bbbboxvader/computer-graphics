@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build" ToolsVersion="Current">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -69,13 +69,13 @@
   </ItemDefinitionGroup>
   <Target Name="CopyTeachingShaders" AfterTargets="Build">
     <MakeDir Directories="$(OutDir)" />
-    <Copy SourceFiles="$(ProjectDir)vertex.glsl;$(ProjectDir)fragmet.glsl" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(ProjectDir)vertex.glsl;$(ProjectDir)fragment.glsl" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(ProjectRoot)third_party\bin\x64\glew32.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <None Include="vertex.glsl" />
-    <None Include="fragmet.glsl" />
+    <None Include="fragment.glsl" />
   </ItemGroup>
 </Project>
