@@ -5,6 +5,7 @@ out vec4 FragColor; // 최종 RGB와 불투명도를 기록할 출력 변수.
 uniform vec3 objectColor; // 물체 재질의 RGB 색.
 uniform vec3 lightPos; // 광원의 월드 위치.
 uniform vec3 lightColor; // 광원의 RGB 색.
+uniform int unlit; // 1이면 물체색을 그대로 표시.
 uniform vec3 viewPos; // 관찰자인 카메라의 월드 위치.
 uniform float ambientStrength; // 주변 조명 계수.
 uniform float diffuseStrength; // 산란반사 계수.
@@ -12,6 +13,11 @@ uniform float specularStrength; // 거울반사 계수.
 uniform float shininess; // 하이라이트 집중도를 정하는 광택 계수.
 void main() // 현재 프래그먼트의 색을 계산한다.
 {
+    if (unlit == 1)
+        {
+            FragColor = vec4(objectColor, 1.0);
+            return;
+        }
     vec3 N = normalize(Normal); // 법선의 길이를 1로 만들어 방향만 사용한다.
     vec3 L = normalize(lightPos - FragPos); // 표면에서 광원으로 향하는 단위벡터.
     vec3 V = normalize(viewPos - FragPos); // 표면에서 카메라로 향하는 단위벡터.
